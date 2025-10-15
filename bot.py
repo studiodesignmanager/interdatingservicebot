@@ -38,18 +38,25 @@ with open("texts.json", "r", encoding="utf-8") as f:
 @dp.message(CommandStart())
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
+    # Сначала приветствие
     await message.answer(
-        texts["greeting"],
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="Man", callback_data="Man"),
-                    InlineKeyboardButton(text="Woman", callback_data="Woman")
-                ]
+        texts["en"]["greeting"]
+    )
+    # Затем вопрос про пол с кнопками
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Man", callback_data="Man"),
+                InlineKeyboardButton(text="Woman", callback_data="Woman")
             ]
-        )
+        ]
+    )
+    await message.answer(
+        texts["en"]["gender_question"],
+        reply_markup=keyboard
     )
     await state.set_state(Form.gender)
+
 
 # --- GENDER HANDLER ---
 @dp.callback_query(F.data.in_({"Man", "Woman"}))
@@ -117,6 +124,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
