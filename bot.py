@@ -1,6 +1,20 @@
+
+
+
+
+
+
+
+
+
+
 import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import CommandStart, Text
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from dotenv import load_dotenv
 
 # Загрузка токенов
@@ -9,113 +23,123 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
-# Тексты
-texts = {
-    "greeting": "👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently.",
-    "choose_gender": "Please select your gender:",
-    "age_question": "How old are you?",
-    "country_question": "Which country do you currently live in?",
-    "registered_question": "Have you ever registered on international dating sites before?\nIf yes, please mention which ones.\nIf no, simply write “No”.",
-    "purpose_question": "What is your purpose for joining?\n(For example: serious relationship, marriage, friendship, etc.)",
-    "thank_you": "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you."
-}
+# Класс состояний
+class Form(StatesGroup):
+    Gender = State()
+    Age = State()
+    Country = State()
+    Registered = State()
+    Purpose = State()
 
-# Кнопка CONTACT US
-keyboard = InlineKeyboardMarkup(
+# Словарь для хранения ответов пользователей
+user_data = {}
+
+# Клавиатура для Contact Us
+contact_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]
     ]
 )
 
-# Хранение ответов пользователей
-user_data = {}
+# /start
+@dp.message(CommandStart())
+async def start(message: types.Message, state: FSMContext):
+    user_data.setdefault(message.from_user.id, {"answers": {}, "name": message.from_user.full_name})
+    await message.answer(
+        "👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently."
+    )
+    # Выбор пола
+    gender_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Man", callback_data="gender_man"),
+                InlineKeyboardButton(text="Woman", callback_data="gender_woman")
+            ]
+        ]
+    )
+    await message.answer("Please select your gender:", reply_markup=gender_keyboard)
+    await state.set_state(Form.Gender)
 
-# Старт
-@dp.message_handler(commands=["start"])
-async def start(message: types.Message):
-    user_id = message.from_user.id
-    user_data[user_id] = {"answers": {}, "name": message.from_user.first_name}
-    await message.answer(texts["greeting"])
-    
-    gender_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Man", callback_data="gender_Man"),
-         InlineKeyboardButton(text="Woman", callback_data="gender_Woman")]
-    ])
-    await message.answer(texts["choose_gender"], reply_markup=gender_kb)
-
-# Выбор пола
-@dp.callback_query_handler(lambda c: c.data.startswith("gender_"))
-async def process_gender(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_data[user_id]["answers"]["Gender"] = callback_query.data.split("_")[1]
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, texts["age_question"])
+# Обработка пола
+@dp.callback_query(Text(startswith="gender_"))
+async def gender_choice(callback: types.CallbackQuery, state: FSMContext):
+    gender = callback.data.split("_")[1].capitalize()
+    user_data[callback.from_user.id]["answers"]["Gender"] = gender
+    await callback.message.edit_reply_markup()
+    await callback.message.answer("🎂 How old are you?")
+    await state.set_state(Form.Age)
 
 # Возраст
-@dp.message_handler(lambda m: "Gender" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-                                   "Age" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_age(message: types.Message):
-    user_id = message.from_user.id
-    user_data[user_id]["answers"]["Age"] = message.text
-    await message.answer(texts["country_question"])
+@dp.message(Form.Age)
+async def ask_age(message: types.Message, state: FSMContext):
+    user_data[message.from_user.id]["answers"]["Age"] = message.text
+    await message.answer("🌍 Which country do you currently live in?")
+    await state.set_state(Form.Country)
 
 # Страна
-@dp.message_handler(lambda m: "Age" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-                                   "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_country(message: types.Message):
-    user_id = message.from_user.id
-    user_data[user_id]["answers"]["Country"] = message.text
-    await message.answer(texts["registered_question"])
+@dp.message(Form.Country)
+async def ask_country(message: types.Message, state: FSMContext):
+    user_data[message.from_user.id]["answers"]["Country"] = message.text
+    await message.answer(
+        "💻 Have you ever registered on international dating sites before?\n"
+        "If yes, please mention which ones.\nIf no, simply write “No”."
+    )
+    await state.set_state(Form.Registered)
 
-# Зарегистрирован ли ранее
-@dp.message_handler(lambda m: "Country" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-                                   "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_registered(message: types.Message):
-    user_id = message.from_user.id
-    user_data[user_id]["answers"]["RegisteredBefore"] = message.text
-    await message.answer(texts["purpose_question"])
+# Зарегистрирован ли
+@dp.message(Form.Registered)
+async def ask_registered(message: types.Message, state: FSMContext):
+    user_data[message.from_user.id]["answers"]["Registered"] = message.text
+    await message.answer(
+        "🎯 What is your purpose for joining?\n(For example: serious relationship, marriage, friendship, etc.)"
+    )
+    await state.set_state(Form.Purpose)
 
 # Цель
-@dp.message_handler(lambda m: "RegisteredBefore" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-                                   "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_purpose(message: types.Message):
-    user_id = message.from_user.id
-    user_data[user_id]["answers"]["Purpose"] = message.text
+@dp.message(Form.Purpose)
+async def ask_purpose(message: types.Message, state: FSMContext):
+    user_data[message.from_user.id]["answers"]["Purpose"] = message.text
 
-    # Отправка отчёта админу
-    answers = user_data[user_id]["answers"]
-    report_text = (
-        f"📝 User: {user_data[user_id]['name']}\n\n"
-        f"👤 Gender: {answers.get('Gender', 'N/A')}\n"
-        f"🎂 Age: {answers.get('Age', 'N/A')}\n"
-        f"🌍 Country: {answers.get('Country', 'N/A')}\n"
-        f"💻 Registered before: {answers.get('RegisteredBefore', 'N/A')}\n"
-        f"🎯 Purpose: {answers.get('Purpose', 'N/A')}\n\n"
-        f"From: @{message.from_user.username} (ID: {user_id})"
+    # Формируем отчёт для админа
+    data = user_data[message.from_user.id]["answers"]
+    full_name = user_data[message.from_user.id]["name"]
+    username = message.from_user.username or "N/A"
+    report = (
+        f"📝 User: {full_name}\n"
+        f"👤 Gender: {data.get('Gender','')}\n"
+        f"🎂 Age: {data.get('Age','')}\n"
+        f"🌍 Country: {data.get('Country','')}\n"
+        f"💻 Registered before: {data.get('Registered','')}\n"
+        f"🎯 Purpose: {data.get('Purpose','')}\n"
+        f"\nFrom: @{username} (ID: {message.from_user.id})"
     )
-    await bot.send_message(ADMIN_ID, report_text, reply_markup=keyboard)
-    
-    # Финальное сообщение пользователю
-    await message.answer(texts["thank_you"], reply_markup=keyboard)
 
+    await bot.send_message(chat_id=ADMIN_ID, text=report)
+
+    # Финальное сообщение пользователю с кнопкой
+    await message.answer(
+        "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you.",
+        reply_markup=contact_keyboard
+    )
+    await state.clear()
+
+# Запуск бота
 if __name__ == "__main__":
     import asyncio
-    from aiogram import executor
-    executor.start_polling(dp, skip_updates=True)
+    from aiogram import F
+    from aiogram.types import CallbackQuery
 
+    async def main():
+        from aiogram import Router
 
+        router = Router()
+        dp.include_router(router)
+        await dp.start_polling(bot)
 
-
-
-
-
-
-
-
-
-
+    asyncio.run(main())
 
 
 
