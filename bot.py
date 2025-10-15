@@ -90,9 +90,9 @@ async def process_purpose(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
 
     report = (
-        f"📝 New form received:\n\n"
-        f"👤 User: {full_name}\n"
-        f"⚥ Gender: {data.get('gender')}\n"
+        f"📩 New form received:\n\n"
+        f"📝 User: {full_name}\n"
+        f"👤 Gender: {data.get('gender')}\n"
         f"📅 Age: {data.get('age')}\n"
         f"🌍 Country: {data.get('country')}\n"
         f"💻 Registered before: {data.get('registered')}\n"
@@ -116,6 +116,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
 
