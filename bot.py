@@ -1,15 +1,9 @@
-import logging
 import os
-import json
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-
-# Load .env
+# Загрузка токенов
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
@@ -17,112 +11,101 @@ ADMIN_ID = int(os.getenv("ADMIN_ID"))
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Store answers temporarily
+# Тексты
+texts = {
+    "greeting": "👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently.",
+    "choose_gender": "Please select your gender:",
+    "age_question": "How old are you?",
+    "country_question": "Which country do you currently live in?",
+    "registered_question": "Have you ever registered on international dating sites before?\nIf yes, please mention which ones.\nIf no, simply write “No”.",
+    "purpose_question": "What is your purpose for joining?\n(For example: serious relationship, marriage, friendship, etc.)",
+    "thank_you": "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you."
+}
+
+# Кнопка CONTACT US
+keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]
+    ]
+)
+
+# Хранение ответов пользователей
 user_data = {}
 
-# Load texts from texts.json
-with open("texts.json", "r", encoding="utf-8") as f:
-    texts = json.load(f)
-
-
-@dp.message(CommandStart())
+# Старт
+@dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    # Инициализация данных
-    user_data[message.from_user.id] = {"answers": {}, "name": message.from_user.full_name}
+    user_id = message.from_user.id
+    user_data[user_id] = {"answers": {}, "name": message.from_user.first_name}
+    await message.answer(texts["greeting"])
+    
+    gender_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Man", callback_data="gender_Man"),
+         InlineKeyboardButton(text="Woman", callback_data="gender_Woman")]
+    ])
+    await message.answer(texts["choose_gender"], reply_markup=gender_kb)
 
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Man"), KeyboardButton(text="Woman")]
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
+# Выбор пола
+@dp.callback_query_handler(lambda c: c.data.startswith("gender_"))
+async def process_gender(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    user_data[user_id]["answers"]["Gender"] = callback_query.data.split("_")[1]
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(user_id, texts["age_question"])
 
-    await message.answer(
-        texts["greeting"] + "\n\n" + texts["choose_gender"],
-        reply_markup=keyboard
-    )
-
-
-@dp.message(lambda m: m.text in ["Man", "Woman"])
+# Возраст
+@dp.message_handler(lambda m: "Gender" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+                                   "Age" not in user_data.get(m.from_user.id, {}).get("answers", {}))
 async def ask_age(message: types.Message):
-    user_data[message.from_user.id]["answers"]["Gender"] = message.text
-    await message.answer(texts["age_question"], reply_markup=types.ReplyKeyboardRemove())
-
-
-@dp.message(lambda m: "Age" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_country(message: types.Message):
-    user_data[message.from_user.id]["answers"]["Age"] = message.text
+    user_id = message.from_user.id
+    user_data[user_id]["answers"]["Age"] = message.text
     await message.answer(texts["country_question"])
 
-
-@dp.message(lambda m: "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_registered(message: types.Message):
-    user_data[message.from_user.id]["answers"]["Country"] = message.text
+# Страна
+@dp.message_handler(lambda m: "Age" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+                                   "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_country(message: types.Message):
+    user_id = message.from_user.id
+    user_data[user_id]["answers"]["Country"] = message.text
     await message.answer(texts["registered_question"])
 
-
-@dp.message(lambda m: "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_purpose(message: types.Message):
-    user_data[message.from_user.id]["answers"]["RegisteredBefore"] = message.text
+# Зарегистрирован ли ранее
+@dp.message_handler(lambda m: "Country" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+                                   "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_registered(message: types.Message):
+    user_id = message.from_user.id
+    user_data[user_id]["answers"]["RegisteredBefore"] = message.text
     await message.answer(texts["purpose_question"])
 
+# Цель
+@dp.message_handler(lambda m: "RegisteredBefore" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+                                   "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_purpose(message: types.Message):
+    user_id = message.from_user.id
+    user_data[user_id]["answers"]["Purpose"] = message.text
 
-@dp.message(lambda m: "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def finish(message: types.Message):
-    user_data[message.from_user.id]["answers"]["Purpose"] = message.text
-
-    contact_button = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]
-        ]
+    # Отправка отчёта админу
+    answers = user_data[user_id]["answers"]
+    report_text = (
+        f"📝 User: {user_data[user_id]['name']}\n\n"
+        f"👤 Gender: {answers.get('Gender', 'N/A')}\n"
+        f"🎂 Age: {answers.get('Age', 'N/A')}\n"
+        f"🌍 Country: {answers.get('Country', 'N/A')}\n"
+        f"💻 Registered before: {answers.get('RegisteredBefore', 'N/A')}\n"
+        f"🎯 Purpose: {answers.get('Purpose', 'N/A')}\n\n"
+        f"From: @{message.from_user.username} (ID: {user_id})"
     )
-
-    await message.answer(
-        texts["thank_you"],
-        reply_markup=contact_button
-    )
-
-    await send_results_to_admin(message.from_user)
-
-
-async def send_results_to_admin(user: types.User):
-    data = user_data.get(user.id, {})
-    answers = data.get("answers", {})
-    name = data.get("name", "Anonymous")  # Имя пользователя из анкеты или Anonymous
-
-    # Проверка всех полей перед формированием отчета
-    gender = answers.get("Gender", "N/A")
-    age = answers.get("Age", "N/A")
-    country = answers.get("Country", "N/A")
-    registered = answers.get("RegisteredBefore", "N/A")
-    purpose = answers.get("Purpose", "N/A")
-
-    text = (
-        f"📝 User: {name}\n\n"
-        f"👤 Gender: {gender}\n"
-        f"📅 Age: {age}\n"
-        f"🌍 Country: {country}\n"
-        f"💻 Registered before: {registered}\n"
-        f"🎯 Purpose: {purpose}\n\n"
-        f"From: @{user.username if user.username else 'NoUsername'} (ID: {user.id})"
-    )
-
-    try:
-        await bot.send_message(chat_id=ADMIN_ID, text=text)
-        print("✅ Message sent to admin")
-    except Exception as e:
-        print("❌ Failed to send message to admin:", e)
-
-
-async def main():
-    print(f"Bot started... Admin ID: {ADMIN_ID}")
-    await dp.start_polling(bot)
-
+    await bot.send_message(ADMIN_ID, report_text, reply_markup=keyboard)
+    
+    # Финальное сообщение пользователю
+    await message.answer(texts["thank_you"], reply_markup=keyboard)
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    from aiogram import executor
+    executor.start_polling(dp, skip_updates=True)
+
+
 
 
 
