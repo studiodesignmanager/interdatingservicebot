@@ -89,7 +89,7 @@ async def process_purpose(message: types.Message, state: FSMContext):
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="💬 Contact us", url="https://t.me/interdatingservice")]
+            [InlineKeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]
         ]
     )
 
@@ -110,6 +110,7 @@ if __name__ == "__main__":
         await dp.start_polling(bot)
 
     asyncio.run(main())
+
 
 
 
