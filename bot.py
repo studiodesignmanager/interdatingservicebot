@@ -1,98 +1,154 @@
 import os
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.state import StatesGroup, State
-from aiogram.fsm.context import FSMContext
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram import Router
-from dotenv import load_dotenv
+import json
 import asyncio
+import logging
+from dotenv import load_dotenv
 
-# Load .env variables
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.filters import CommandStart
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
+
+# ---------- logging ----------
+logging.basicConfig(level=logging.INFO)
+
+# ---------- load env ----------
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN not found in environment (.env)")
+
+# ---------- bot / dispatcher ----------
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 dp.include_router(router)
 
-
-# Define states
+# ---------- FSM ----------
 class Form(StatesGroup):
     gender = State()
     age = State()
     country = State()
+    registered = State()
+    purpose = State()
 
+# ---------- START ----------
+@router.message(CommandStart())
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
 
-# Start command
-@router.message(F.text == "/start")
-async def start_handler(message: types.Message, state: FSMContext):
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Man"), KeyboardButton(text="Woman")]
-        ],
-        resize_keyboard=True
+    greeting_text = (
+        "👋 Good afternoon! Please answer a few questions.\n\n"
+        "✍️ This will help us better understand why you are contacting us and assist you more efficiently.\n\n"
+        "Please select your gender:"
     )
-    await message.answer("👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently.\n\nSelect your gender:", reply_markup=keyboard)
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Man"), KeyboardButton(text="Woman")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    await message.answer(greeting_text, reply_markup=kb)
     await state.set_state(Form.gender)
 
-
-# Gender handler
+# ---------- GENDER ----------
 @router.message(Form.gender)
-async def process_gender(message: types.Message, state: FSMContext):
+async def process_gender(message: Message, state: FSMContext):
     await state.update_data(gender=message.text)
-    await message.answer("How old are you?", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("How old are you?", reply_markup=ReplyKeyboardRemove())
     await state.set_state(Form.age)
 
-
-# Age handler
+# ---------- AGE ----------
 @router.message(Form.age)
-async def process_age(message: types.Message, state: FSMContext):
+async def process_age(message: Message, state: FSMContext):
     await state.update_data(age=message.text)
-    await message.answer("Which country do you live in?")
+    await message.answer("Which country do you currently live in?")
     await state.set_state(Form.country)
 
-
-# Country handler
+# ---------- COUNTRY ----------
 @router.message(Form.country)
-async def process_country(message: types.Message, state: FSMContext):
+async def process_country(message: Message, state: FSMContext):
     await state.update_data(country=message.text)
+    await message.answer(
+        "Have you ever registered on international dating sites before?\n"
+        "If yes, please mention which ones.\n"
+        "If no, simply write “No”."
+    )
+    await state.set_state(Form.registered)
+
+# ---------- REGISTERED ----------
+@router.message(Form.registered)
+async def process_registered(message: Message, state: FSMContext):
+    await state.update_data(registered=message.text)
+    await message.answer(
+        "What is your purpose for joining?\n"
+        "(For example: serious relationship, marriage, friendship, etc.)"
+    )
+    await state.set_state(Form.purpose)
+
+# ---------- PURPOSE ----------
+@router.message(Form.purpose)
+async def process_purpose(message: Message, state: FSMContext):
+    await state.update_data(purpose=message.text)
     data = await state.get_data()
 
-    gender = data.get("gender")
-    age = data.get("age")
-    country = data.get("country")
-    username = message.from_user.username or "No username"
-    user_id = message.from_user.id
+    username = message.from_user.username
+    if username:
+        user_field = f"@{username}"
+    else:
+        user_field = f"tg://user?id={message.from_user.id}"
 
-    # Send confirmation to user
-    await message.answer("✅ Thank you! Our team will contact you soon.")
-
-    # Send data to admin
     admin_text = (
-        f"📩 New submission:\n\n"
-        f"👤 User: @{username} (ID: {user_id})\n"
-        f"🚻 Gender: {gender}\n"
-        f"🎂 Age: {age}\n"
-        f"🌍 Country: {country}"
+        "📨 New user completed the survey!\n\n"
+        f"User: {user_field}\n"
+        f"Gender: {data.get('gender')}\n"
+        f"Age: {data.get('age')}\n"
+        f"Country: {data.get('country')}\n"
+        f"Registered before: {data.get('registered')}\n"
+        f"Purpose: {data.get('purpose')}"
     )
 
+    # ✅ кнопка со ссылкой (та же, что раньше)
+    contact_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]],
+        resize_keyboard=True
+    )
+
+    await message.answer(
+        "❤️ Thank you for your answers!\n"
+        "Click the button below and send us a message so we can get in touch with you.",
+        reply_markup=contact_kb
+    )
+
+    # отправляем админу
     try:
         await bot.send_message(ADMIN_ID, admin_text)
+        logging.info("✅ Sent survey results to admin.")
     except Exception as e:
-        print(f"Failed to send message to admin: {e}")
+        logging.error(f"Failed to send to admin: {e}")
 
     await state.clear()
 
+# ---------- fallback ----------
+@router.message(F.text)
+async def catch_all(message: Message):
+    pass
 
+# ---------- run ----------
 async def main():
+    logging.info("Bot started... Admin ID: %s", ADMIN_ID)
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
 
 
 
