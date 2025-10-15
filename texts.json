@@ -1,21 +1,14 @@
 {
-    "en": {
-        "greeting": "👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently.",
-        "age_question": "How old are you?",
-        "country_question": "Which country do you currently live in?",
-        "registered_question": "Have you ever registered on international dating sites before?\nIf yes, please mention which ones.\nIf no, simply write “No”.",
-        "purpose_question": "What is your purpose for joining?\n(For example: serious relationship, marriage, friendship, etc.)",
-        "thank_you": "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you."
-    },
-    "ru": {
-        "greeting": "👋 Добрый день! Ответьте, пожалуйста, на несколько вопросов.\n\n✍️ Это поможет нам лучше понять цель вашего обращения и помочь вам быстрее.",
-        "age_question": "Сколько вам полных лет?",
-        "country_question": "В какой стране вы проживаете?",
-        "registered_question": "Ранее вы регистрировались на международных сайтах знакомств?\nЕсли да — укажите, на каких.\nЕсли нет — напишите «Нет».",
-        "purpose_question": "Какова цель вашего обращения?\n(Например: серьёзные отношения, брак, дружба и т.д.)",
-        "thank_you": "❤️ Спасибо за ваши ответы!\nНажмите на кнопку ниже и напишите нам сообщение, чтобы мы могли связаться с вами."
-    }
+    "greeting": "👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently.",
+    "choose_gender": "Please select your gender:",
+    "age_question": "How old are you?",
+    "country_question": "Which country do you currently live in?",
+    "registered_question": "Have you ever registered on international dating sites before?\nIf yes, please mention which ones.\nIf no, simply write “No”.",
+    "purpose_question": "What is your purpose for joining?\n(For example: serious relationship, marriage, friendship, etc.)",
+    "thank_you": "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you."
 }
+
+
 
 
 
