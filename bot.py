@@ -1,21 +1,20 @@
 import os
-from aiogram import Bot, Dispatcher, types
+import asyncio
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-from aiogram import F
 from dotenv import load_dotenv
-import asyncio
 
+# --- Load environment variables ---
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-print("BOT_TOKEN:", TOKEN)
-
-bot = Bot(token=TOKEN)
+# --- Bot initialization ---
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Старт
+# --- Start command handler ---
 @dp.message(CommandStart())
 async def start(message: Message):
     keyboard = ReplyKeyboardMarkup(
@@ -31,18 +30,20 @@ async def start(message: Message):
         reply_markup=keyboard
     )
 
-# Обработка выбора пола
+# --- Gender selection handler ---
 @dp.message(F.text.in_(["Man", "Woman"]))
-async def get_gender(message: Message):
+async def gender_chosen(message: Message):
     await message.answer("How old are you?")
 
+# --- Main loop ---
 async def main():
-    print(f"Bot started... Admin ID: {ADMIN_ID}")
+    print(f"✅ Bot started successfully.\nAdmin ID: {ADMIN_ID}\nToken: {BOT_TOKEN[:10]}...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-EOF
+
+
 
 
 
