@@ -2,7 +2,7 @@ import logging
 import asyncio
 import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart, Text
+from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
@@ -129,6 +129,7 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logging.info("Bot stopped.")
+
 
 
 
