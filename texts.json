@@ -1,6 +1,6 @@
 {
   "en": {
-    "greeting": "👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently.\n\nPlease select your gender:",
+    "greeting": "👋 Good afternoon! Please answer a few questions.\n\n✍️ This will help us better understand why you are contacting us and assist you more efficiently.",
     "gender_question": "Please select your gender:",
     "age_question": "How old are you?",
     "country_question": "Which country do you currently live in?",
@@ -10,6 +10,8 @@
     "contact_button": "📩 CONTACT US"
   }
 }
+
+
 
 
 
