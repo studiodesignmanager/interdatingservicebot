@@ -27,9 +27,8 @@ with open("texts.json", "r", encoding="utf-8") as f:
 
 @dp.message(CommandStart())
 async def start(message: types.Message):
-    # Initialize user data and store full name
-    user_data[message.from_user.id] = {"answers": {}}
-    user_data[message.from_user.id]["answers"]["Name"] = message.from_user.full_name or "Anonymous"
+    # Инициализация данных
+    user_data[message.from_user.id] = {"answers": {}, "name": message.from_user.full_name}
 
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -59,8 +58,6 @@ async def ask_country(message: types.Message):
 
 @dp.message(lambda m: "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
 async def ask_registered(message: types.Message):
-    if "Age" not in user_data.get(message.from_user.id, {}).get("answers", {}):
-        user_data[message.from_user.id]["answers"]["Age"] = message.text
     user_data[message.from_user.id]["answers"]["Country"] = message.text
     await message.answer(texts["registered_question"])
 
@@ -90,22 +87,25 @@ async def finish(message: types.Message):
 
 
 async def send_results_to_admin(user: types.User):
-    data = user_data.get(user.id, {}).get("answers", {})
-    if not data:
-        return
+    data = user_data.get(user.id, {})
+    answers = data.get("answers", {})
+    name = data.get("name", "Anonymous")  # Имя пользователя из анкеты или Anonymous
 
-    # Use name from answers
-    name = data.get("Name", "Anonymous")
-    username = f"@{user.username}" if user.username else f"tg://user?id={user.id}"
+    # Проверка всех полей перед формированием отчета
+    gender = answers.get("Gender", "N/A")
+    age = answers.get("Age", "N/A")
+    country = answers.get("Country", "N/A")
+    registered = answers.get("RegisteredBefore", "N/A")
+    purpose = answers.get("Purpose", "N/A")
 
     text = (
         f"📝 User: {name}\n\n"
-        f"👤 Gender: {data.get('Gender')}\n"
-        f"📅 Age: {data.get('Age')}\n"
-        f"🌍 Country: {data.get('Country')}\n"
-        f"💻 Registered before: {data.get('RegisteredBefore')}\n"
-        f"🎯 Purpose: {data.get('Purpose')}\n\n"
-        f"From: {username} (ID: {user.id})"
+        f"👤 Gender: {gender}\n"
+        f"📅 Age: {age}\n"
+        f"🌍 Country: {country}\n"
+        f"💻 Registered before: {registered}\n"
+        f"🎯 Purpose: {purpose}\n\n"
+        f"From: @{user.username if user.username else 'NoUsername'} (ID: {user.id})"
     )
 
     try:
