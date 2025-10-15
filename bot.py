@@ -7,17 +7,18 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 import asyncio
 
-TOKEN = "твой_токен"
+# === CONFIG ===
+BOT_TOKEN = "8251385895:AAElGvsBTiYZTg6mEz9I1n78G3HHj1wUgmU"
 ADMIN_ID = 5123692910
 TEXTS_FILE = "texts.json"
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
-# ===== FSM =====
+# === STATES ===
 class Form(StatesGroup):
     gender = State()
     age = State()
@@ -26,7 +27,7 @@ class Form(StatesGroup):
     purpose = State()
 
 
-# ===== LOAD TEXTS =====
+# === LOAD TEXTS ===
 def load_texts():
     try:
         with open(TEXTS_FILE, "r", encoding="utf-8") as f:
@@ -38,7 +39,7 @@ def load_texts():
 texts = load_texts()
 
 
-# ===== START =====
+# === START ===
 @dp.message(Command("start"))
 async def start(message: types.Message, state: FSMContext):
     keyboard = ReplyKeyboardMarkup(
@@ -49,7 +50,7 @@ async def start(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-# ===== LANGUAGE CHOICE =====
+# === LANGUAGE CHOICE ===
 @dp.message(F.text.in_(["ENGLISH", "РУССКИЙ"]))
 async def choose_language(message: types.Message, state: FSMContext):
     lang = "en" if message.text == "ENGLISH" else "ru"
@@ -68,7 +69,7 @@ async def choose_language(message: types.Message, state: FSMContext):
     await state.set_state(Form.gender)
 
 
-# ===== GENDER =====
+# === GENDER ===
 @dp.message(Form.gender)
 async def process_gender(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -80,7 +81,7 @@ async def process_gender(message: types.Message, state: FSMContext):
     await state.set_state(Form.age)
 
 
-# ===== AGE =====
+# === AGE ===
 @dp.message(Form.age)
 async def process_age(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -92,7 +93,7 @@ async def process_age(message: types.Message, state: FSMContext):
     await state.set_state(Form.country)
 
 
-# ===== COUNTRY =====
+# === COUNTRY ===
 @dp.message(Form.country)
 async def process_country(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -104,7 +105,7 @@ async def process_country(message: types.Message, state: FSMContext):
     await state.set_state(Form.registered)
 
 
-# ===== REGISTERED =====
+# === REGISTERED ===
 @dp.message(Form.registered)
 async def process_registered(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -116,7 +117,7 @@ async def process_registered(message: types.Message, state: FSMContext):
     await state.set_state(Form.purpose)
 
 
-# ===== PURPOSE =====
+# === PURPOSE + FINAL ===
 @dp.message(Form.purpose)
 async def process_purpose(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -126,7 +127,7 @@ async def process_purpose(message: types.Message, state: FSMContext):
     await state.update_data(purpose=message.text)
     user_data = await state.get_data()
 
-    # Send to admin
+    # == send to admin ==
     info = (
         f"📩 New response from @{message.from_user.username or 'NoUsername'}\n\n"
         f"Gender: {user_data['gender']}\n"
@@ -137,19 +138,28 @@ async def process_purpose(message: types.Message, state: FSMContext):
     )
     await bot.send_message(ADMIN_ID, info)
 
-    # Thank user
-    await message.answer(t["thank_you"])
+    # == thank user + button ==
+    contact_button = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]
+        ],
+        resize_keyboard=True
+    )
+
+    await message.answer(t["thank_you"], reply_markup=contact_button)
     await state.clear()
 
 
-# ===== MAIN =====
+# === MAIN ===
 async def main():
-    logging.info("Bot started...")
+    logging.info("✅ Bot started...")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
 
 
 
