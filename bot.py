@@ -1,11 +1,11 @@
 import logging
 import os
-from aiogram import Bot, Dispatcher, types
+import json
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from aiogram.utils import executor
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from dotenv import load_dotenv
+import asyncio
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -21,75 +21,79 @@ dp = Dispatcher()
 # Store answers temporarily
 user_data = {}
 
-# Load texts from texts.json
-import json
+# Load texts
 with open("texts.json", "r", encoding="utf-8") as f:
     texts = json.load(f)
 
 
 @dp.message(CommandStart())
 async def start(message: types.Message):
-    user_data[message.from_user.id] = {"answers": {}}
-    await message.answer(
-        texts["intro"],
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="Man"), KeyboardButton(text="Woman")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
-        )
+    logging.info(f"User {message.from_user.id} started the bot.")
+    user_data[message.from_user.id] = {"step": "gender", "answers": {}}
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Man"), KeyboardButton(text="Woman")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
     )
+    await message.answer(texts["intro"], reply_markup=keyboard)
     await message.answer("1️⃣ Please select your gender:")
 
 
-@dp.message(lambda m: m.text in ["Man", "Woman"])
+@dp.message(F.text.in_(["Man", "Woman"]))
 async def ask_age(message: types.Message):
-    user_data[message.from_user.id]["answers"]["Gender"] = message.text
-    await message.answer("2️⃣ How old are you?", reply_markup=types.ReplyKeyboardRemove())
+    uid = message.from_user.id
+    user_data.setdefault(uid, {"answers": {}})
+    user_data[uid]["answers"]["Gender"] = message.text
+    user_data[uid]["step"] = "age"
+    await message.answer("2️⃣ How old are you?", reply_markup=ReplyKeyboardRemove())
 
 
-@dp.message(lambda m: "How old" in user_data.get(m.from_user.id, {}).get("answers", {}))
+@dp.message(F.text.regexp(r"^\d{1,2}$"))
 async def ask_country(message: types.Message):
-    user_data[message.from_user.id]["answers"]["Age"] = message.text
+    uid = message.from_user.id
+    if user_data.get(uid, {}).get("step") != "age":
+        return
+    user_data[uid]["answers"]["Age"] = message.text
+    user_data[uid]["step"] = "country"
     await message.answer("3️⃣ Which country do you currently live in?")
 
 
-@dp.message(lambda m: "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+@dp.message(F.text)
 async def ask_registration(message: types.Message):
-    if "Age" not in user_data.get(message.from_user.id, {}).get("answers", {}):
-        user_data[message.from_user.id]["answers"]["Age"] = message.text
-    user_data[message.from_user.id]["answers"]["Country"] = message.text
-    await message.answer(
-        "4️⃣ Have you ever registered on international dating sites before?\n"
-        "If yes, please mention which ones.\n"
-        "If no, simply write “No”."
-    )
+    uid = message.from_user.id
+    step = user_data.get(uid, {}).get("step")
 
+    if step == "country":
+        user_data[uid]["answers"]["Country"] = message.text
+        user_data[uid]["step"] = "registered"
+        await message.answer(
+            "4️⃣ Have you ever registered on international dating sites before?\n"
+            "If yes, please mention which ones.\n"
+            "If no, simply write “No”."
+        )
 
-@dp.message(lambda m: "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def ask_purpose(message: types.Message):
-    user_data[message.from_user.id]["answers"]["RegisteredBefore"] = message.text
-    await message.answer(
-        "5️⃣ What is your purpose for joining?\n"
-        "(For example: serious relationship, marriage, friendship, etc.)"
-    )
+    elif step == "registered":
+        user_data[uid]["answers"]["RegisteredBefore"] = message.text
+        user_data[uid]["step"] = "purpose"
+        await message.answer(
+            "5️⃣ What is your purpose for joining?\n"
+            "(For example: serious relationship, marriage, friendship, etc.)"
+        )
 
+    elif step == "purpose":
+        user_data[uid]["answers"]["Purpose"] = message.text
+        user_data[uid]["step"] = "done"
 
-@dp.message(lambda m: "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
-async def finish(message: types.Message):
-    user_data[message.from_user.id]["answers"]["Purpose"] = message.text
+        contact_button = ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]],
+            resize_keyboard=True
+        )
+        await message.answer(
+            "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you.",
+            reply_markup=contact_button
+        )
 
-    contact_button = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]],
-        resize_keyboard=True
-    )
-
-    await message.answer(
-        "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you.",
-        reply_markup=contact_button
-    )
-
-    # Send results to admin
-    await send_results_to_admin(message.from_user)
+        await send_results_to_admin(message.from_user)
 
 
 async def send_results_to_admin(user: types.User):
@@ -111,9 +115,9 @@ async def send_results_to_admin(user: types.User):
 
     try:
         await bot.send_message(chat_id=ADMIN_ID, text=text)
-        print("✅ Message sent to admin")
+        logging.info(f"✅ Message sent to admin ({ADMIN_ID})")
     except Exception as e:
-        print("❌ Failed to send message to admin:", e)
+        logging.error(f"❌ Failed to send message to admin: {e}")
 
 
 async def main():
@@ -122,8 +126,9 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
+
+
 
 
 
