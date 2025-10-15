@@ -1,132 +1,100 @@
-import logging
-import os
 import json
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from dotenv import load_dotenv
+import logging
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import asyncio
 
-# Logging setup
+# === CONFIG ===
+TOKEN = "твой_токен_сюда"
+ADMIN_ID = 5123692910
+TEXTS_FILE = "texts.json"
+
 logging.basicConfig(level=logging.INFO)
 
-# Load .env
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Store answers temporarily
-user_data = {}
-
-# Load texts
-with open("texts.json", "r", encoding="utf-8") as f:
-    texts = json.load(f)
-
-
-@dp.message(CommandStart())
-async def start(message: types.Message):
-    logging.info(f"User {message.from_user.id} started the bot.")
-    user_data[message.from_user.id] = {"step": "gender", "answers": {}}
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Man"), KeyboardButton(text="Woman")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-    await message.answer(texts["intro"], reply_markup=keyboard)
-    await message.answer("1️⃣ Please select your gender:")
-
-
-@dp.message(F.text.in_(["Man", "Woman"]))
-async def ask_age(message: types.Message):
-    uid = message.from_user.id
-    user_data.setdefault(uid, {"answers": {}})
-    user_data[uid]["answers"]["Gender"] = message.text
-    user_data[uid]["step"] = "age"
-    await message.answer("2️⃣ How old are you?", reply_markup=ReplyKeyboardRemove())
-
-
-@dp.message(F.text.regexp(r"^\d{1,2}$"))
-async def ask_country(message: types.Message):
-    uid = message.from_user.id
-    if user_data.get(uid, {}).get("step") != "age":
-        return
-    user_data[uid]["answers"]["Age"] = message.text
-    user_data[uid]["step"] = "country"
-    await message.answer("3️⃣ Which country do you currently live in?")
-
-
-@dp.message(F.text)
-async def ask_registration(message: types.Message):
-    uid = message.from_user.id
-    step = user_data.get(uid, {}).get("step")
-
-    if step == "country":
-        user_data[uid]["answers"]["Country"] = message.text
-        user_data[uid]["step"] = "registered"
-        await message.answer(
-            "4️⃣ Have you ever registered on international dating sites before?\n"
-            "If yes, please mention which ones.\n"
-            "If no, simply write “No”."
-        )
-
-    elif step == "registered":
-        user_data[uid]["answers"]["RegisteredBefore"] = message.text
-        user_data[uid]["step"] = "purpose"
-        await message.answer(
-            "5️⃣ What is your purpose for joining?\n"
-            "(For example: serious relationship, marriage, friendship, etc.)"
-        )
-
-    elif step == "purpose":
-        user_data[uid]["answers"]["Purpose"] = message.text
-        user_data[uid]["step"] = "done"
-
-        contact_button = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]],
-            resize_keyboard=True
-        )
-        await message.answer(
-            "❤️ Thank you for your answers!\nClick the button below and send us a message so we can get in touch with you.",
-            reply_markup=contact_button
-        )
-
-        await send_results_to_admin(message.from_user)
-
-
-async def send_results_to_admin(user: types.User):
-    data = user_data.get(user.id, {}).get("answers", {})
-    if not data:
-        return
-
-    username = f"@{user.username}" if user.username else f"tg://user?id={user.id}"
-
-    text = (
-        f"📨 New user completed the survey!\n\n"
-        f"User: {username}\n"
-        f"Gender: {data.get('Gender')}\n"
-        f"Age: {data.get('Age')}\n"
-        f"Country: {data.get('Country')}\n"
-        f"Registered before: {data.get('RegisteredBefore')}\n"
-        f"Purpose: {data.get('Purpose')}"
-    )
-
+# === LOAD TEXTS ===
+def load_texts():
     try:
-        await bot.send_message(chat_id=ADMIN_ID, text=text)
-        logging.info(f"✅ Message sent to admin ({ADMIN_ID})")
+        with open(TEXTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
     except Exception as e:
-        logging.error(f"❌ Failed to send message to admin: {e}")
+        logging.error(f"Error loading texts: {e}")
+        return {}
 
+texts = load_texts()
 
+# === START ===
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    logging.info(f"User {message.from_user.id} started the bot")
+
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="ENGLISH"), KeyboardButton(text="РУССКИЙ")]
+        ],
+        resize_keyboard=True
+    )
+    await message.answer(
+        "👋 Please select your language / Пожалуйста, выберите язык:",
+        reply_markup=keyboard
+    )
+
+# === LANGUAGE CHOICE ===
+@dp.message(lambda msg: msg.text in ["ENGLISH", "РУССКИЙ"])
+async def choose_language(message: types.Message):
+    lang = "en" if message.text == "ENGLISH" else "ru"
+    await start_survey(message, lang)
+
+async def start_survey(message, lang):
+    t = texts.get(lang, {})
+    if not t:
+        await message.answer("Texts not loaded. Please contact admin.")
+        return
+
+    gender_kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Man" if lang == "en" else "Мужчина"),
+             KeyboardButton(text="Woman" if lang == "en" else "Женщина")]
+        ],
+        resize_keyboard=True
+    )
+    await message.answer(t["greeting"], reply_markup=gender_kb)
+
+# === GENDER QUESTION ===
+@dp.message(lambda msg: msg.text in ["Man", "Woman", "Мужчина", "Женщина"])
+async def ask_age(message: types.Message):
+    lang = "en" if message.text in ["Man", "Woman"] else "ru"
+    t = texts[lang]
+    await message.answer(t["age_question"])
+
+# === OTHER QUESTIONS ===
+@dp.message(lambda msg: msg.text.isdigit())
+async def ask_country(message: types.Message):
+    user_data = {"age": message.text}
+    lang = "en" if message.text.isascii() else "ru"
+    t = texts[lang]
+    await message.answer(t["country_question"])
+
+# === ADMIN COMMAND ===
+@dp.message(Command("admin"))
+async def admin_panel(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("Access denied.")
+        return
+    await message.answer("✅ Admin panel loaded. Texts ready for editing.")
+
+# === MAIN LOOP ===
 async def main():
-    print(f"Bot started... Admin ID: {ADMIN_ID}")
+    logging.info(f"Bot started... Admin ID: {ADMIN_ID}")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
 
 
 
