@@ -1,17 +1,19 @@
 import logging
+import asyncio
+import json
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-import asyncio
-import json
-import os
+from dotenv import load_dotenv
 
-# --- CONFIG ---
-TOKEN = "YOUR_BOT_TOKEN"
-ADMIN_ID = 5123692910
+# --- LOAD CONFIG ---
+load_dotenv()
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 logging.basicConfig(level=logging.INFO)
 
 # --- INIT ---
@@ -36,11 +38,13 @@ with open("texts.json", "r", encoding="utf-8") as f:
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        texts["start_en"],
+        texts["start_en"] + "\n\nPlease select your gender:",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Man", callback_data="Man"),
-                 InlineKeyboardButton(text="💬 Woman", callback_data="Woman")]
+                [
+                    InlineKeyboardButton(text="💬 Man", callback_data="Man"),
+                    InlineKeyboardButton(text="💬 Woman", callback_data="Woman")
+                ]
             ]
         )
     )
@@ -50,20 +54,20 @@ async def start(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.in_({"Man", "Woman"}))
 async def process_gender(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(gender=callback.data)
-    await callback.message.edit_text("🎂 How old are you?")
+    await callback.message.edit_text("📅 How old are you?")
     await state.set_state(Form.age)
 
 # --- AGE HANDLER ---
 @dp.message(Form.age)
 async def process_age(message: types.Message, state: FSMContext):
-    await state.update_data(age=message.text)
+    await state.update_data(age=message.text.strip())
     await message.answer("🌍 Which country do you currently live in?")
     await state.set_state(Form.country)
 
 # --- COUNTRY HANDLER ---
 @dp.message(Form.country)
 async def process_country(message: types.Message, state: FSMContext):
-    await state.update_data(country=message.text)
+    await state.update_data(country=message.text.strip())
     await message.answer(
         "💻 Have you ever registered on international dating sites before?\n"
         "If yes, please mention which ones.\n"
@@ -74,8 +78,8 @@ async def process_country(message: types.Message, state: FSMContext):
 # --- REGISTERED HANDLER ---
 @dp.message(Form.registered)
 async def process_registered(message: types.Message, state: FSMContext):
-    await state.update_data(registered=message.text)
-    await message.answer("🎯 What is your main purpose for contacting us?")
+    await state.update_data(registered=message.text.strip())
+    await message.answer("🎯 What is your purpose for joining?\n(For example: serious relationship, marriage, friendship, etc.)")
     await state.set_state(Form.purpose)
 
 # --- PURPOSE HANDLER ---
@@ -84,7 +88,7 @@ async def process_purpose(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
 
-    full_name = message.from_user.first_name or "Anonymous"
+    full_name = (message.from_user.full_name or "").strip() or "—"
     username = f"@{message.from_user.username}" if message.from_user.username else "—"
     user_id = message.from_user.id
 
@@ -116,6 +120,8 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
 
 
 
