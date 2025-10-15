@@ -4,8 +4,8 @@ import json
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from dotenv import load_dotenv
-import asyncio
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -29,46 +29,41 @@ with open("texts.json", "r", encoding="utf-8") as f:
 @dp.message(CommandStart())
 async def start(message: types.Message):
     user_data[message.from_user.id] = {"answers": {}}
-    # Gender selection buttons
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Man", callback_data="gender_Man"),
-             InlineKeyboardButton(text="Woman", callback_data="gender_Woman")]
-        ]
+    keyboard = ReplyKeyboardBuilder()
+    keyboard.add(types.KeyboardButton(text="Man"))
+    keyboard.add(types.KeyboardButton(text="Woman"))
+    await message.answer(
+        texts["greeting"],
+        reply_markup=keyboard.as_markup(resize_keyboard=True, one_time_keyboard=True)
     )
-    await message.answer(texts["greeting"], reply_markup=keyboard)
+    await message.answer(texts["choose_gender"])
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("gender_"))
-async def ask_age(callback_query: types.CallbackQuery):
-    gender = callback_query.data.split("_")[1]
-    user_data[callback_query.from_user.id]["answers"]["Gender"] = gender
-    await bot.send_message(callback_query.from_user.id, texts["age_question"])
+@dp.message(lambda m: m.text in ["Man", "Woman"])
+async def ask_age(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Gender"] = message.text
+    await message.answer(texts["age_question"], reply_markup=types.ReplyKeyboardRemove())
 
 
-@dp.message(lambda m: "Gender" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-            "Age" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+@dp.message(lambda m: "Age" not in user_data.get(m.from_user.id, {}).get("answers", {}))
 async def ask_country(message: types.Message):
     user_data[message.from_user.id]["answers"]["Age"] = message.text
     await message.answer(texts["country_question"])
 
 
-@dp.message(lambda m: "Age" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-            "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+@dp.message(lambda m: "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
 async def ask_registered(message: types.Message):
     user_data[message.from_user.id]["answers"]["Country"] = message.text
     await message.answer(texts["registered_question"])
 
 
-@dp.message(lambda m: "Country" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-            "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+@dp.message(lambda m: "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
 async def ask_purpose(message: types.Message):
     user_data[message.from_user.id]["answers"]["RegisteredBefore"] = message.text
     await message.answer(texts["purpose_question"])
 
 
-@dp.message(lambda m: "RegisteredBefore" in user_data.get(m.from_user.id, {}).get("answers", {}) and
-            "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+@dp.message(lambda m: "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
 async def finish(message: types.Message):
     user_data[message.from_user.id]["answers"]["Purpose"] = message.text
 
@@ -78,7 +73,10 @@ async def finish(message: types.Message):
         ]
     )
 
-    await message.answer(texts["thank_you"], reply_markup=contact_button)
+    await message.answer(
+        texts["thank_you"],
+        reply_markup=contact_button
+    )
 
     # Send results to admin
     await send_results_to_admin(message.from_user)
@@ -89,16 +87,17 @@ async def send_results_to_admin(user: types.User):
     if not data:
         return
 
-    username = f"@{user.username}" if user.username else f"tg://user?id={user.id}"
+    username_display = data.get("Name") or f"User {user.id}"  # Если есть поле Name в анкете
+    tg_username = f"@{user.username}" if user.username else f"tg://user?id={user.id}"
 
     text = (
-        f"📩 **New user response!**\n\n"
-        f"User: {username}\n"
-        f"Gender: {data.get('Gender')}\n"
-        f"Age: {data.get('Age')}\n"
-        f"Country: {data.get('Country')}\n"
-        f"Registered before: {data.get('RegisteredBefore')}\n"
-        f"Purpose: {data.get('Purpose')}"
+        f"📝 User: {username_display}\n\n"
+        f"👤 Gender: {data.get('Gender')}\n"
+        f"📅 Age: {data.get('Age')}\n"
+        f"🌍 Country: {data.get('Country')}\n"
+        f"💻 Registered before: {data.get('RegisteredBefore')}\n"
+        f"🎯 Purpose: {data.get('Purpose')}\n\n"
+        f"From: {tg_username} (ID: {user.id})"
     )
 
     try:
@@ -114,7 +113,10 @@ async def main():
 
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
+
+
 
 
 
