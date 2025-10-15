@@ -1,30 +1,42 @@
 import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.types import Message
+from aiogram.filters import CommandStart
+from aiogram import F
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram import Router
+from aiogram.utils.markdown import hbold
 from dotenv import load_dotenv
+import asyncio
 
-# Загружаем переменные окружения
+# Загружаем .env
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-print("BOT_TOKEN:", BOT_TOKEN)  # проверка, что токен загрузился
+print("BOT_TOKEN:", BOT_TOKEN)
 
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN not found! Check your .env file.")
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
+dp = Dispatcher(storage=MemoryStorage())
+router = Router()
+dp.include_router(router)
 
-@dp.message_handler(commands=['start'])
-async def start(message: types.Message):
+@router.message(CommandStart())
+async def cmd_start(message: Message):
     await message.answer("✅ Bot is running correctly!")
 
-if __name__ == "__main__":
+async def main():
     print(f"Bot started... Admin ID: {ADMIN_ID}")
-    executor.start_polling(dp, skip_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
 
 
 
