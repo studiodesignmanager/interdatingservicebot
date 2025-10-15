@@ -1,115 +1,121 @@
+import logging
 import os
+import json
 from aiogram import Bot, Dispatcher, types
+from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import CommandStart, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram import F
 from dotenv import load_dotenv
+import asyncio
 
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+
+# Load .env
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 
-# Состояния
-class Form(StatesGroup):
-    gender = State()
-    age = State()
-    country = State()
-    registered = State()
-    purpose = State()
+# Store answers temporarily
+user_data = {}
+
+# Load texts from texts.json
+with open("texts.json", "r", encoding="utf-8") as f:
+    texts = json.load(f)
+
 
 @dp.message(CommandStart())
-async def start(message: types.Message, state: FSMContext):
-    await message.answer(
-        "👋 Good afternoon! Please answer a few questions.\n\n"
-        "✍️ This will help us better understand why you are contacting us and assist you more efficiently."
-    )
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Man", callback_data="Man"),
-            InlineKeyboardButton(text="Woman", callback_data="Woman")
-        ]
-    ])
-
-    await message.answer("Please select your gender:", reply_markup=keyboard)
-    await state.set_state(Form.gender)
-
-@dp.callback_query(F.data.in_(["Man", "Woman"]))
-async def gender_chosen(callback_query: types.CallbackQuery, state: FSMContext):
-    await state.update_data(gender=callback_query.data)
-    await callback_query.message.answer("How old are you?")
-    await state.set_state(Form.age)
-
-@dp.message(Form.age)
-async def process_age(message: types.Message, state: FSMContext):
-    await state.update_data(age=message.text)
-    await message.answer("Which country do you currently live in?")
-    await state.set_state(Form.country)
-
-@dp.message(Form.country)
-async def process_country(message: types.Message, state: FSMContext):
-    await state.update_data(country=message.text)
-    await message.answer(
-        "Have you ever registered on international dating sites before?\n"
-        "If yes, please mention which ones.\nIf no, simply write “No”."
-    )
-    await state.set_state(Form.registered)
-
-@dp.message(Form.registered)
-async def process_registered(message: types.Message, state: FSMContext):
-    await state.update_data(registered=message.text)
-    await message.answer(
-        "What is your purpose for joining?\n"
-        "(For example: serious relationship, marriage, friendship, etc.)"
-    )
-    await state.set_state(Form.purpose)
-
-@dp.message(Form.purpose)
-async def process_purpose(message: types.Message, state: FSMContext):
-    await state.update_data(purpose=message.text)
-    data = await state.get_data()
-
-    text = (
-        f"📝 New form received:\n\n"
-        f"👤 Gender: {data.get('gender')}\n"
-        f"🎂 Age: {data.get('age')}\n"
-        f"🌍 Country: {data.get('country')}\n"
-        f"💻 Registered before: {data.get('registered')}\n"
-        f"🎯 Purpose: {data.get('purpose')}\n\n"
-        f"From: @{message.from_user.username or 'No username'} (ID: {message.from_user.id})"
-    )
-
-    await bot.send_message(ADMIN_ID, text)
-
+async def start(message: types.Message):
+    user_data[message.from_user.id] = {"answers": {}}
+    # Gender selection buttons
     keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Man", callback_data="gender_Man"),
+             InlineKeyboardButton(text="Woman", callback_data="gender_Woman")]
+        ]
+    )
+    await message.answer(texts["greeting"], reply_markup=keyboard)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("gender_"))
+async def ask_age(callback_query: types.CallbackQuery):
+    gender = callback_query.data.split("_")[1]
+    user_data[callback_query.from_user.id]["answers"]["Gender"] = gender
+    await bot.send_message(callback_query.from_user.id, texts["age_question"])
+
+
+@dp.message(lambda m: "Gender" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+            "Age" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_country(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Age"] = message.text
+    await message.answer(texts["country_question"])
+
+
+@dp.message(lambda m: "Age" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+            "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_registered(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Country"] = message.text
+    await message.answer(texts["registered_question"])
+
+
+@dp.message(lambda m: "Country" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+            "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_purpose(message: types.Message):
+    user_data[message.from_user.id]["answers"]["RegisteredBefore"] = message.text
+    await message.answer(texts["purpose_question"])
+
+
+@dp.message(lambda m: "RegisteredBefore" in user_data.get(m.from_user.id, {}).get("answers", {}) and
+            "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def finish(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Purpose"] = message.text
+
+    contact_button = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]
         ]
     )
 
-    await message.answer(
-        "❤️ Thank you for your answers!\n"
-        "Click the button below and send us a message so we can get in touch with you.",
-        reply_markup=keyboard
+    await message.answer(texts["thank_you"], reply_markup=contact_button)
+
+    # Send results to admin
+    await send_results_to_admin(message.from_user)
+
+
+async def send_results_to_admin(user: types.User):
+    data = user_data.get(user.id, {}).get("answers", {})
+    if not data:
+        return
+
+    username = f"@{user.username}" if user.username else f"tg://user?id={user.id}"
+
+    text = (
+        f"📩 **New user response!**\n\n"
+        f"User: {username}\n"
+        f"Gender: {data.get('Gender')}\n"
+        f"Age: {data.get('Age')}\n"
+        f"Country: {data.get('Country')}\n"
+        f"Registered before: {data.get('RegisteredBefore')}\n"
+        f"Purpose: {data.get('Purpose')}"
     )
 
-    await state.clear()
+    try:
+        await bot.send_message(chat_id=ADMIN_ID, text=text)
+        print("✅ Message sent to admin")
+    except Exception as e:
+        print("❌ Failed to send message to admin:", e)
+
+
+async def main():
+    print(f"Bot started... Admin ID: {ADMIN_ID}")
+    await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
-    import asyncio
-    from aiogram import Dispatcher
-
-    async def main():
-        print("Bot started... Admin ID:", ADMIN_ID)
-        await dp.start_polling(bot)
-
     asyncio.run(main())
+
 
 
 
