@@ -1,163 +1,119 @@
-import json
 import logging
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+import os
+import json
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import CommandStart
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
-import asyncio
+from aiogram.utils import executor
+from dotenv import load_dotenv
 
-# === CONFIG ===
-BOT_TOKEN = "8251385895:AAElGvsBTiYZTg6mEz9I1n78G3HHj1wUgmU"
-ADMIN_ID = 5123692910
-TEXTS_FILE = "texts.json"
-
+# Logging setup
 logging.basicConfig(level=logging.INFO)
+
+# Load .env
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+
+# Проверяем токен
+print("BOT_TOKEN:", BOT_TOKEN)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Temporary store for user answers
+user_data = {}
 
-# === STATES ===
-class Form(StatesGroup):
-    gender = State()
-    age = State()
-    country = State()
-    registered = State()
-    purpose = State()
+# Load texts from texts.json
+with open("texts.json", "r", encoding="utf-8") as f:
+    texts = json.load(f)
 
 
-# === LOAD TEXTS ===
-def load_texts():
-    try:
-        with open(TEXTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        logging.error(f"Error loading texts: {e}")
-        return {}
+@dp.message(CommandStart())
+async def start(message: types.Message):
+    user_data[message.from_user.id] = {"answers": {}}
 
-texts = load_texts()
-
-
-# === START ===
-@dp.message(Command("start"))
-async def start(message: types.Message, state: FSMContext):
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="ENGLISH"), KeyboardButton(text="РУССКИЙ")]],
-        resize_keyboard=True
-    )
-    await message.answer("👋 Please select your language / Пожалуйста, выберите язык:", reply_markup=keyboard)
-    await state.clear()
-
-
-# === LANGUAGE CHOICE ===
-@dp.message(F.text.in_(["ENGLISH", "РУССКИЙ"]))
-async def choose_language(message: types.Message, state: FSMContext):
-    lang = "en" if message.text == "ENGLISH" else "ru"
-    await state.update_data(lang=lang)
-    t = texts[lang]
-
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Man" if lang == "en" else "Мужчина"),
-             KeyboardButton(text="Woman" if lang == "en" else "Женщина")]
-        ],
-        resize_keyboard=True
+    gender_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Man"), KeyboardButton(text="Woman")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
     )
 
-    await message.answer(t["greeting"], reply_markup=keyboard)
-    await state.set_state(Form.gender)
+    await message.answer(texts["greeting"])
+    await message.answer(texts["choose_gender"], reply_markup=gender_keyboard)
 
 
-# === GENDER ===
-@dp.message(Form.gender)
-async def process_gender(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data["lang"]
-    t = texts[lang]
-
-    await state.update_data(gender=message.text)
-    await message.answer(t["age_question"], reply_markup=types.ReplyKeyboardRemove())
-    await state.set_state(Form.age)
+@dp.message(lambda m: m.text in ["Man", "Woman"])
+async def ask_age(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Gender"] = message.text
+    await message.answer(texts["age_question"], reply_markup=types.ReplyKeyboardRemove())
 
 
-# === AGE ===
-@dp.message(Form.age)
-async def process_age(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data["lang"]
-    t = texts[lang]
-
-    await state.update_data(age=message.text)
-    await message.answer(t["country_question"])
-    await state.set_state(Form.country)
+@dp.message(lambda m: "Gender" in user_data.get(m.from_user.id, {}).get("answers", {}) and "Age" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_country(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Age"] = message.text
+    await message.answer(texts["country_question"])
 
 
-# === COUNTRY ===
-@dp.message(Form.country)
-async def process_country(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data["lang"]
-    t = texts[lang]
-
-    await state.update_data(country=message.text)
-    await message.answer(t["registered_question"])
-    await state.set_state(Form.registered)
+@dp.message(lambda m: "Age" in user_data.get(m.from_user.id, {}).get("answers", {}) and "Country" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_registered(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Country"] = message.text
+    await message.answer(texts["registered_question"])
 
 
-# === REGISTERED ===
-@dp.message(Form.registered)
-async def process_registered(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data["lang"]
-    t = texts[lang]
-
-    await state.update_data(registered=message.text)
-    await message.answer(t["purpose_question"])
-    await state.set_state(Form.purpose)
+@dp.message(lambda m: "Country" in user_data.get(m.from_user.id, {}).get("answers", {}) and "RegisteredBefore" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def ask_purpose(message: types.Message):
+    user_data[message.from_user.id]["answers"]["RegisteredBefore"] = message.text
+    await message.answer(texts["purpose_question"])
 
 
-# === PURPOSE + FINAL ===
-@dp.message(Form.purpose)
-async def process_purpose(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data["lang"]
-    t = texts[lang]
+@dp.message(lambda m: "RegisteredBefore" in user_data.get(m.from_user.id, {}).get("answers", {}) and "Purpose" not in user_data.get(m.from_user.id, {}).get("answers", {}))
+async def finish(message: types.Message):
+    user_data[message.from_user.id]["answers"]["Purpose"] = message.text
 
-    await state.update_data(purpose=message.text)
-    user_data = await state.get_data()
-
-    # == send to admin ==
-    info = (
-        f"📩 New response from @{message.from_user.username or 'NoUsername'}\n\n"
-        f"Gender: {user_data['gender']}\n"
-        f"Age: {user_data['age']}\n"
-        f"Country: {user_data['country']}\n"
-        f"Registered before: {user_data['registered']}\n"
-        f"Purpose: {user_data['purpose']}"
-    )
-    await bot.send_message(ADMIN_ID, info)
-
-    # == thank user + button ==
     contact_button = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]
-        ],
+        keyboard=[[KeyboardButton(text="📩 CONTACT US", url="https://t.me/interdatingservice")]],
         resize_keyboard=True
     )
 
-    await message.answer(t["thank_you"], reply_markup=contact_button)
-    await state.clear()
+    await message.answer(texts["thank_you"], reply_markup=contact_button)
+    await send_results_to_admin(message.from_user)
 
 
-# === MAIN ===
+async def send_results_to_admin(user: types.User):
+    data = user_data.get(user.id, {}).get("answers", {})
+    if not data:
+        return
+
+    username = f"@{user.username}" if user.username else f"tg://user?id={user.id}"
+
+    text = (
+        f"📨 New user completed the survey!\n\n"
+        f"User: {username}\n"
+        f"Gender: {data.get('Gender')}\n"
+        f"Age: {data.get('Age')}\n"
+        f"Country: {data.get('Country')}\n"
+        f"Registered before: {data.get('RegisteredBefore')}\n"
+        f"Purpose: {data.get('Purpose')}"
+    )
+
+    try:
+        await bot.send_message(chat_id=ADMIN_ID, text=text)
+        print("✅ Message sent to admin")
+    except Exception as e:
+        print("❌ Failed to send message to admin:", e)
+
+
 async def main():
-    logging.info("✅ Bot started...")
+    print(f"Bot started... Admin ID: {ADMIN_ID}")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
+
+
 
 
 
