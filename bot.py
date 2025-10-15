@@ -1,4 +1,3 @@
-cat > /root/interdatingservicebot/bot.py << 'EOF'
 import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
@@ -44,6 +43,7 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 EOF
+
 
 
 
